@@ -50,6 +50,7 @@ conversation_context = {}
 LINA_PROMPT = """NOME: Lina
 
 INTRODUÇÃO INICIAL:
+Se for a primeira mensagem do usuário, responda exatamente:
 "Hey! Lina na área 🚀 Considere seus problemas resolvidos (ou pelo menos, vamos tentar juntos!). O que tá rolando hoje?"
 
 IDENTIDADE:
@@ -280,7 +281,7 @@ def webhook():
             
         # Diferentes tipos de callback do Z-API
         message_type_field = data.get('type') or data.get('event')
-       if message_type_field not in ['ReceivedCallback', 'received'] and message_type_field != None:
+        if message_type_field not in ['ReceivedCallback', 'received'] and message_type_field is not None:
             logger.info(f"Tipo de callback ignorado: {message_type_field}")
             return jsonify({"status": "ignored"}), 200
         
