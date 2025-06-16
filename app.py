@@ -51,7 +51,7 @@ LINA_PROMPT = """NOME: Lina
 
 INTRODUÇÃO INICIAL:
 Se for a primeira mensagem do usuário, responda exatamente:
-"Oi! Eu sou a Lina 😊 Posso te ajudar com qualquer assunto - desde receitas e tecnologia até estudos e relacionamentos. O que você precisa hoje?"
+"Hey! Lina na área 🚀 Considere seus problemas resolvidos (ou pelo menos, vamos tentar juntos!). O que tá rolando hoje?"
 
 IDENTIDADE:
 - Assistente versátil e inteligente
@@ -293,9 +293,15 @@ def webhook():
         
         # Corrige formato do número brasileiro (adiciona 9 se necessário)
         original_phone = phone
-        if phone and phone.startswith('5571') and len(phone) == 12:
-            # Se for Bahia (71) e tem 12 dígitos, adiciona o 9
-            phone = phone[:4] + '9' + phone[4:]
+        if phone and phone.startswith('55') and len(phone) == 12:
+            # Extrai: código país (55) + DDD (2 dígitos) + número (8 dígitos)
+            # Formato: 55 + DD + 8dígitos → 55 + DD + 9 + 8dígitos
+            codigo_pais = phone[:2]  # 55
+            ddd = phone[2:4]         # DD (ex: 71, 11, 21, etc)
+            numero = phone[4:]       # 8 dígitos
+            
+            # Monta com o 9
+            phone = codigo_pais + ddd + '9' + numero
             logger.info(f"📱 Número corrigido de {original_phone} para {phone}")
         
         # Limpa número de telefone
