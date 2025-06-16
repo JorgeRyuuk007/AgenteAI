@@ -22,20 +22,19 @@ logger = logging.getLogger(__name__)
 # Inicializa Flask
 app = Flask(__name__)
 
-# Configurações
-Z_API_TOKEN = os.getenv('Z_API_TOKEN')
-Z_API_INSTANCE = os.getenv('Z_API_INSTANCE')
+# Configurações Evolution API
+EVOLUTION_API_URL = "https://evolution-api-v150.onrender.com"
+EVOLUTION_INSTANCE = "lina"  # Nome da instância
+EVOLUTION_API_KEY = "B6D711FCDE4D4FD5936544120E713976"  # API Key global
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-Z_API_BASE_URL = "https://api.z-api.io"
 
 # Verifica se as variáveis estão configuradas
-if not all([Z_API_TOKEN, Z_API_INSTANCE, GROQ_API_KEY]):
-    logger.error("ERRO: Variáveis de ambiente não configuradas!")
-    logger.error(f"Z_API_TOKEN: {'✓' if Z_API_TOKEN else '✗'}")
-    logger.error(f"Z_API_INSTANCE: {'✓' if Z_API_INSTANCE else '✗'}")
-    logger.error(f"GROQ_API_KEY: {'✓' if GROQ_API_KEY else '✗'}")
+if not GROQ_API_KEY:
+    logger.error("ERRO: GROQ_API_KEY não configurada!")
+else:
+    logger.info("✅ Configurações carregadas com sucesso")
 
-# Inicializa cliente Groq (SEM parâmetros extras)
+# Inicializa cliente Groq
 try:
     groq_client = Groq(api_key=GROQ_API_KEY)
     logger.info("✅ Cliente Groq inicializado com sucesso")
@@ -97,81 +96,57 @@ CASOS ESPECIAIS:
 - Problemas pessoais: Ouça com empatia, sugira sem impor"""
 
 def send_message_to_whatsapp(phone, message):
-    """Envia mensagem de texto via Z-API"""
+    """Envia mensagem de texto via Evolution API"""
     try:
-        # URL direta para garantir que está correta
-        url = f"https://api.z-api.io/instances/{Z_API_INSTANCE}/token/{Z_API_TOKEN}/send-text"
+        url = f"{EVOLUTION_API_URL}/message/sendText/{EVOLUTION_INSTANCE}"
         
         payload = {
-            "phone": phone,
-            "message": message
+            "number": phone,
+            "text": message
         }
         
         headers = {
             "Content-Type": "application/json",
-            "Client-Token": Z_API_TOKEN
+            "apikey": EVOLUTION_API_KEY
         }
         
         logger.info(f"📤 Enviando para {phone}: {message[:50]}...")
         logger.info(f"🔗 URL: {url}")
-        logger.info(f"📦 Payload: {payload}")
         
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         
         logger.info(f"📊 Status Code: {response.status_code}")
         logger.info(f"📝 Response: {response.text}")
         
-        response.raise_for_status()
-        
-        result = response.json()
-        logger.info(f"✅ Z-API Response: {result}")
-        return True
+        if response.status_code == 201:
+            result = response.json()
+            logger.info(f"✅ Evolution API Response: {result}")
+            return True
+        else:
+            logger.error(f"❌ Erro HTTP {response.status_code}: {response.text}")
+            return False
         
     except Exception as e:
         logger.error(f"❌ Erro ao enviar mensagem para {phone}: {str(e)}")
         return False
 
-def download_audio_from_z_api(message_id):
-    """Baixa arquivo de áudio do Z-API"""
+def download_audio_from_evolution(media_url):
+    """Baixa arquivo de áudio via Evolution API"""
     try:
-        urls = [
-            f"{Z_API_BASE_URL}/instances/{Z_API_INSTANCE}/token/{Z_API_TOKEN}/download-media/{message_id}",
-            f"{Z_API_BASE_URL}/instances/{Z_API_INSTANCE}/token/{Z_API_TOKEN}/download-media"
-        ]
-        
         headers = {
-            "Client-Token": Z_API_TOKEN
+            "apikey": EVOLUTION_API_KEY
         }
         
-        for url in urls:
-            try:
-                if "download-media/" in url:
-                    response = requests.get(url, headers=headers, timeout=30)
-                else:
-                    params = {"messageId": message_id}
-                    response = requests.get(url, params=params, headers=headers, timeout=30)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    logger.info(f"🔍 Download response: {data}")
-                    
-                    if 'base64' in data:
-                        return base64.b64decode(data['base64'])
-                    elif 'media' in data and 'base64' in data['media']:
-                        return base64.b64decode(data['media']['base64'])
-                    elif 'file' in data:
-                        file_response = requests.get(data['file'], timeout=30)
-                        return file_response.content
-                        
-            except Exception as e:
-                logger.warning(f"⚠️ Download attempt failed: {str(e)}")
-                continue
+        response = requests.get(media_url, headers=headers, timeout=30)
         
-        logger.error("❌ All download attempts failed")
-        return None
+        if response.status_code == 200:
+            return response.content
+        else:
+            logger.error(f"❌ Erro ao baixar áudio: {response.status_code}")
+            return None
         
     except Exception as e:
-        logger.error(f"❌ Error downloading audio: {str(e)}")
+        logger.error(f"❌ Erro no download do áudio: {str(e)}")
         return None
 
 def transcribe_audio(audio_data):
@@ -267,7 +242,7 @@ def get_lina_response(user_message, phone_number):
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Endpoint principal do webhook Z-API"""
+    """Endpoint principal do webhook Evolution API"""
     try:
         data = request.get_json()
         logger.info(f"📥 Webhook received: {json.dumps(data, indent=2)}")
@@ -276,65 +251,63 @@ def webhook():
             logger.warning("⚠️ Empty payload received")
             return jsonify({"status": "ignored"}), 200
         
-        # Verifica se é callback de mensagem recebida - MODO FLEXÍVEL
-        message_type_field = data.get('type')
-        logger.info(f"🔍 Message type field: {message_type_field}")
+        # Estrutura da Evolution API
+        event = data.get('event')
+        instance = data.get('instance')
+        data_content = data.get('data', {})
         
-        # Aceita qualquer tipo de callback ou None
-        if message_type_field and message_type_field not in ['ReceivedCallback', 'received']:
-            logger.info(f"⏭️ Callback type ignored: {message_type_field}")
+        # Verifica se é mensagem recebida
+        if event != 'messages.upsert':
+            logger.info(f"⏭️ Event ignored: {event}")
+            return jsonify({"status": "ignored"}), 200
+        
+        # Verifica se a instância é a nossa
+        if instance != EVOLUTION_INSTANCE:
+            logger.info(f"⏭️ Instance ignored: {instance}")
             return jsonify({"status": "ignored"}), 200
         
         # Extrai informações da mensagem
-        phone = data.get('phone') or data.get('from')
-        if not phone:
+        message_info = data_content
+        if isinstance(message_info, list) and len(message_info) > 0:
+            message_info = message_info[0]
+        
+        # Verifica se a mensagem é de entrada (não nossa)
+        if message_info.get('key', {}).get('fromMe'):
+            logger.info("⏭️ Message from bot ignored")
+            return jsonify({"status": "ignored"}), 200
+        
+        # Extrai número do telefone
+        remote_jid = message_info.get('key', {}).get('remoteJid', '')
+        if not remote_jid:
             logger.warning("⚠️ No phone number found")
             return jsonify({"status": "error", "message": "No phone number"}), 400
         
-        # Corrige formato do número brasileiro (adiciona 9 se necessário)
-        original_phone = phone
-        if phone and phone.startswith('55') and len(phone) == 12:
-            # Extrai: código país (55) + DDD (2 dígitos) + número (8 dígitos)
-            # Formato: 55 + DD + 8dígitos → 55 + DD + 9 + 8dígitos
-            codigo_pais = phone[:2]  # 55
-            ddd = phone[2:4]         # DD (ex: 71, 11, 21, etc)
-            numero = phone[4:]       # 8 dígitos
-            
-            # Monta com o 9
-            phone = codigo_pais + ddd + '9' + numero
-            logger.info(f"📱 Número corrigido de {original_phone} para {phone}")
-        
-        # Limpa número de telefone
-        phone = phone.replace('+', '').replace('-', '').replace(' ', '')
+        # Limpa número de telefone (remove @s.whatsapp.net)
+        phone = remote_jid.replace('@s.whatsapp.net', '').replace('@c.us', '')
         logger.info(f"📱 Processing message from: {phone}")
         
+        # Extrai conteúdo da mensagem
+        message_content = message_info.get('message', {})
         user_message = None
         
-        # PROCESSA TEXTO - Modo super flexível
-        text_data = data.get('text', {})
-        if text_data and isinstance(text_data, dict):
-            user_message = text_data.get('message', '')
-            logger.info(f"💬 Text message found: {user_message}")
+        # PROCESSA TEXTO
+        if 'conversation' in message_content:
+            user_message = message_content['conversation']
+            logger.info(f"💬 Text message: {user_message}")
         
-        # Se ainda não achou a mensagem, procura em outros lugares
-        if not user_message:
-            # Verifica se a mensagem está diretamente no data
-            user_message = data.get('message', '')
-            if user_message:
-                logger.info(f"💬 Direct message found: {user_message}")
+        elif 'extendedTextMessage' in message_content:
+            user_message = message_content['extendedTextMessage'].get('text', '')
+            logger.info(f"💬 Extended text message: {user_message}")
         
         # PROCESSA ÁUDIO
-        message_type = data.get('messageType', 'text')
-        if message_type in ['audio', 'ptt'] and not user_message:
-            logger.info(f"🎤 Audio message detected")
+        elif 'audioMessage' in message_content:
+            logger.info("🎤 Audio message detected")
+            audio_msg = message_content['audioMessage']
             
-            audio_info = data.get('audio', {}) or data.get('ptt', {})
-            message_id = audio_info.get('messageId') or data.get('messageId')
-            
-            if message_id:
-                logger.info(f"🔍 Processing audio ID: {message_id}")
-                
-                audio_data = download_audio_from_z_api(message_id)
+            # Tenta obter URL do áudio
+            media_url = audio_msg.get('url')
+            if media_url:
+                audio_data = download_audio_from_evolution(media_url)
                 if audio_data:
                     transcription = transcribe_audio(audio_data)
                     if transcription and transcription.strip():
@@ -360,8 +333,8 @@ def webhook():
         
         # Verifica se há mensagem para processar
         if not user_message or not user_message.strip():
-            logger.warning(f"⚠️ Empty or invalid message. Raw data: {data}")
-            return jsonify({"status": "ignored", "reason": "empty_message"}), 200
+            logger.warning(f"⚠️ Empty or unsupported message type. Content: {message_content}")
+            return jsonify({"status": "ignored", "reason": "unsupported_message"}), 200
         
         # Gera resposta da Lina
         logger.info(f"🤖 Generating Lina response for: {user_message}")
@@ -386,8 +359,10 @@ def health_check():
         "status": "healthy",
         "service": "Lina WhatsApp Agent",
         "timestamp": datetime.now().isoformat(),
+        "api": "Evolution API",
         "environment": {
-            "z_api_configured": bool(Z_API_TOKEN and Z_API_INSTANCE),
+            "evolution_api_url": EVOLUTION_API_URL,
+            "evolution_instance": EVOLUTION_INSTANCE,
             "groq_configured": bool(GROQ_API_KEY),
             "groq_client_ready": groq_client is not None
         },
@@ -399,8 +374,9 @@ def home():
     """Página inicial"""
     return jsonify({
         "agent": "Lina - Assistente IA para WhatsApp",
-        "version": "1.1",
+        "version": "2.0 - Evolution API",
         "status": "online" if groq_client else "partially_online",
+        "api": "Evolution API",
         "endpoints": {
             "webhook": "/webhook",
             "health": "/health"
@@ -410,7 +386,7 @@ def home():
             "Transcrição de áudios",
             "Múltiplas áreas de conhecimento",
             "Contexto de conversa",
-            "Processamento flexível de webhooks"
+            "Evolution API Integration"
         ]
     }), 200
 
@@ -442,7 +418,8 @@ def test_endpoint():
 
 if __name__ == '__main__':
     logger.info("🤖 Lina WhatsApp Agent starting...")
-    logger.info(f"📱 Z-API Instance: {Z_API_INSTANCE}")
+    logger.info(f"🔗 Evolution API: {EVOLUTION_API_URL}")
+    logger.info(f"📱 Instance: {EVOLUTION_INSTANCE}")
     logger.info(f"🧠 Groq Client: {'✅ Ready' if groq_client else '❌ Error'}")
     
     port = int(os.getenv('PORT', 5000))
