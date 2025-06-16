@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Configurações Evolution API
-EVOLUTION_API_URL = "https://apievo.kanel.com.br"
-EVOLUTION_INSTANCE = "lina-test"  # Nome da instância
-EVOLUTION_API_KEY = "test-api-key-123"  # API Key para teste
+EVOLUTION_API_URL = "https://evolution.prd.zohotek.com.br"
+EVOLUTION_INSTANCE = "linabot2024"  # Nome da instância
+EVOLUTION_API_KEY = "LINA-BOT-SECRET-2024"  # API Key para teste
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'AIzaSyALfY8C12OEB4xuQqXaOuPo0Azfao7QyAI')
 
 # Verifica se as variáveis estão configuradas
