@@ -35,7 +35,7 @@ if not all([Z_API_TOKEN, Z_API_INSTANCE, GROQ_API_KEY]):
     logger.error(f"Z_API_INSTANCE: {'✓' if Z_API_INSTANCE else '✗'}")
     logger.error(f"GROQ_API_KEY: {'✓' if GROQ_API_KEY else '✗'}")
 
-# Inicializa cliente Groq
+# Inicializa cliente Groq (SEM parâmetros extras)
 try:
     groq_client = Groq(api_key=GROQ_API_KEY)
     logger.info("✅ Cliente Groq inicializado com sucesso")
@@ -52,6 +52,7 @@ LINA_PROMPT = """NOME: Lina
 INTRODUÇÃO INICIAL:
 Se for a primeira mensagem do usuário, responda exatamente:
 "Hey! Lina na área 🚀 Considere seus problemas resolvidos (ou pelo menos, vamos tentar juntos!). O que tá rolando hoje?"
+
 IDENTIDADE:
 - Assistente versátil e inteligente
 - Especialista generalista com conhecimento profundo em múltiplas áreas
@@ -107,7 +108,8 @@ def send_message_to_whatsapp(phone, message):
         }
         
         headers = {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Client-Token": Z_API_TOKEN
         }
         
         logger.info(f"📤 Enviando para {phone}: {message[:50]}...")
