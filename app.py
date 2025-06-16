@@ -3,7 +3,7 @@ import json
 import requests
 import logging
 from flask import Flask, request, jsonify
-from groq import Groq
+import google.generativeai as genai
 from dotenv import load_dotenv
 from datetime import datetime
 import tempfile
@@ -26,21 +26,23 @@ app = Flask(__name__)
 EVOLUTION_API_URL = "https://apievo.kanel.com.br"
 EVOLUTION_INSTANCE = "lina-test"  # Nome da instância
 EVOLUTION_API_KEY = "test-api-key-123"  # API Key para teste
-GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'AIzaSyALfY8C12OEB4xuQqXaOuPo0Azfao7QyAI')
 
 # Verifica se as variáveis estão configuradas
-if not GROQ_API_KEY:
-    logger.error("ERRO: GROQ_API_KEY não configurada!")
+if not GEMINI_API_KEY:
+    logger.error("ERRO: GEMINI_API_KEY não configurada!")
 else:
     logger.info("✅ Configurações carregadas com sucesso")
 
-# Inicializa cliente Groq
+# Inicializa cliente Gemini
 try:
-    groq_client = Groq(api_key=GROQ_API_KEY)
-    logger.info("✅ Cliente Groq inicializado com sucesso")
+    genai.configure(api_key=GEMINI_API_KEY)
+    gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+    logger.info("✅ Cliente Gemini inicializado com sucesso")
+    gemini_client = True
 except Exception as e:
-    logger.error(f"❌ Erro ao inicializar Groq: {str(e)}")
-    groq_client = None
+    logger.error(f"❌ Erro ao inicializar Gemini: {str(e)}")
+    gemini_client = False
 
 # Dicionário para manter contexto básico das conversas
 conversation_context = {}
@@ -150,28 +152,30 @@ def download_audio_from_evolution(media_url):
         return None
 
 def transcribe_audio(audio_data):
-    """Transcreve áudio usando Whisper da Groq"""
+    """Transcreve áudio usando Gemini"""
     try:
-        if not groq_client:
-            logger.error("❌ Groq client not initialized")
+        if not gemini_client:
+            logger.error("❌ Gemini client not initialized")
             return None
             
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as temp_audio:
             temp_audio.write(audio_data)
             temp_audio_path = temp_audio.name
         
-        logger.info(f"🎤 Transcribing audio: {temp_audio_path}")
+        logger.info(f"🎤 Transcribing audio with Gemini: {temp_audio_path}")
         
-        with open(temp_audio_path, "rb") as audio_file:
-            transcription = groq_client.audio.transcriptions.create(
-                model="whisper-large-v3",
-                file=audio_file,
-                language="pt"
-            )
+        # Upload audio file para Gemini
+        audio_file = genai.upload_file(temp_audio_path)
+        
+        # Gera transcrição
+        response = gemini_model.generate_content([
+            "Transcreva este áudio em português brasileiro. Retorne apenas o texto transcrito:",
+            audio_file
+        ])
         
         os.unlink(temp_audio_path)
         
-        transcription_text = transcription.text.strip()
+        transcription_text = response.text.strip()
         logger.info(f"✅ Transcription: {transcription_text}")
         return transcription_text
         
@@ -185,9 +189,9 @@ def transcribe_audio(audio_data):
         return None
 
 def get_lina_response(user_message, phone_number):
-    """Gera resposta da Lina usando Groq"""
+    """Gera resposta da Lina usando Gemini"""
     try:
-        if not groq_client:
+        if not gemini_client:
             return "Desculpe, estou com problemas técnicos no momento. Tente novamente em alguns minutos! 😅"
             
         # Verifica se é primeira mensagem do usuário
@@ -201,29 +205,24 @@ def get_lina_response(user_message, phone_number):
         
         context = conversation_context[phone_number]
         
-        # Prepara mensagens para o modelo
-        messages = [
-            {"role": "system", "content": LINA_PROMPT}
-        ]
+        # Prepara o prompt completo
+        full_prompt = f"{LINA_PROMPT}\n\n"
         
         # Adiciona histórico recente
         for msg in context["messages"][-10:]:
-            messages.append(msg)
+            if msg["role"] == "user":
+                full_prompt += f"Usuário: {msg['content']}\n"
+            else:
+                full_prompt += f"Lina: {msg['content']}\n"
         
         # Adiciona mensagem atual
-        messages.append({"role": "user", "content": user_message})
+        full_prompt += f"Usuário: {user_message}\nLina:"
         
-        logger.info(f"🧠 Generating response with Groq for: {user_message[:50]}...")
+        logger.info(f"🧠 Generating response with Gemini for: {user_message[:50]}...")
         
-        # Gera resposta com Groq
-        response = groq_client.chat.completions.create(
-            model="llama-3.1-70b-versatile",
-            messages=messages,
-            temperature=0.7,
-            max_tokens=1000
-        )
-        
-        lina_response = response.choices[0].message.content
+        # Gera resposta com Gemini
+        response = gemini_model.generate_content(full_prompt)
+        lina_response = response.text.strip()
         
         # Atualiza contexto
         context["messages"].append({"role": "user", "content": user_message})
@@ -363,8 +362,8 @@ def health_check():
         "environment": {
             "evolution_api_url": EVOLUTION_API_URL,
             "evolution_instance": EVOLUTION_INSTANCE,
-            "groq_configured": bool(GROQ_API_KEY),
-            "groq_client_ready": groq_client is not None
+            "gemini_configured": bool(GEMINI_API_KEY),
+            "gemini_client_ready": gemini_client
         },
         "active_conversations": len(conversation_context)
     }), 200
@@ -375,7 +374,7 @@ def home():
     return jsonify({
         "agent": "Lina - Assistente IA para WhatsApp",
         "version": "2.0 - Evolution API",
-        "status": "online" if groq_client else "partially_online",
+        "status": "online" if gemini_client else "partially_online",
         "api": "Evolution API",
         "endpoints": {
             "webhook": "/webhook",
@@ -420,7 +419,7 @@ if __name__ == '__main__':
     logger.info("🤖 Lina WhatsApp Agent starting...")
     logger.info(f"🔗 Evolution API: {EVOLUTION_API_URL}")
     logger.info(f"📱 Instance: {EVOLUTION_INSTANCE}")
-    logger.info(f"🧠 Groq Client: {'✅ Ready' if groq_client else '❌ Error'}")
+    logger.info(f"🧠 Gemini Client: {'✅ Ready' if gemini_client else '❌ Error'}")
     
     port = int(os.getenv('PORT', 5000))
     logger.info(f"🚀 Server starting on port {port}")
