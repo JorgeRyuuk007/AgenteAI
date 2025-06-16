@@ -35,12 +35,12 @@ if not all([Z_API_TOKEN, Z_API_INSTANCE, GROQ_API_KEY]):
     logger.error(f"Z_API_INSTANCE: {'✓' if Z_API_INSTANCE else '✗'}")
     logger.error(f"GROQ_API_KEY: {'✓' if GROQ_API_KEY else '✗'}")
 
-# Inicializa cliente Groq (SEM parâmetros extras)
+# Inicializa cliente Groq
 try:
     groq_client = Groq(api_key=GROQ_API_KEY)
-    logger.info("Cliente Groq inicializado com sucesso")
+    logger.info("✅ Cliente Groq inicializado com sucesso")
 except Exception as e:
-    logger.error(f"Erro ao inicializar Groq: {str(e)}")
+    logger.error(f"❌ Erro ao inicializar Groq: {str(e)}")
     groq_client = None
 
 # Dicionário para manter contexto básico das conversas
@@ -52,7 +52,6 @@ LINA_PROMPT = """NOME: Lina
 INTRODUÇÃO INICIAL:
 Se for a primeira mensagem do usuário, responda exatamente:
 "Hey! Lina na área 🚀 Considere seus problemas resolvidos (ou pelo menos, vamos tentar juntos!). O que tá rolando hoje?"
-
 IDENTIDADE:
 - Assistente versátil e inteligente
 - Especialista generalista com conhecimento profundo em múltiplas áreas
@@ -111,23 +110,21 @@ def send_message_to_whatsapp(phone, message):
             "Client-Token": Z_API_TOKEN
         }
         
-        logger.info(f"Enviando mensagem para {phone}...")
+        logger.info(f"📤 Enviando mensagem para {phone}: {message[:50]}...")
         response = requests.post(url, json=payload, headers=headers, timeout=30)
         response.raise_for_status()
         
         result = response.json()
-        logger.info(f"Resposta Z-API: {result}")
-        logger.info(f"Mensagem enviada com sucesso para {phone}")
+        logger.info(f"✅ Z-API Response: {result}")
         return True
         
     except Exception as e:
-        logger.error(f"Erro ao enviar mensagem para {phone}: {str(e)}")
+        logger.error(f"❌ Erro ao enviar mensagem para {phone}: {str(e)}")
         return False
 
 def download_audio_from_z_api(message_id):
     """Baixa arquivo de áudio do Z-API"""
     try:
-        # Tenta diferentes endpoints do Z-API para download
         urls = [
             f"{Z_API_BASE_URL}/instances/{Z_API_INSTANCE}/token/{Z_API_TOKEN}/download-media/{message_id}",
             f"{Z_API_BASE_URL}/instances/{Z_API_INSTANCE}/token/{Z_API_TOKEN}/download-media"
@@ -147,44 +144,40 @@ def download_audio_from_z_api(message_id):
                 
                 if response.status_code == 200:
                     data = response.json()
-                    logger.info(f"Resposta download: {data}")
+                    logger.info(f"🔍 Download response: {data}")
                     
-                    # Diferentes formatos de resposta do Z-API
                     if 'base64' in data:
                         return base64.b64decode(data['base64'])
                     elif 'media' in data and 'base64' in data['media']:
                         return base64.b64decode(data['media']['base64'])
                     elif 'file' in data:
-                        # Se retornar URL, baixa o arquivo
                         file_response = requests.get(data['file'], timeout=30)
                         return file_response.content
                         
             except Exception as e:
-                logger.warning(f"Tentativa de download falhou com {url}: {str(e)}")
+                logger.warning(f"⚠️ Download attempt failed: {str(e)}")
                 continue
         
-        logger.error("Todas as tentativas de download falharam")
+        logger.error("❌ All download attempts failed")
         return None
         
     except Exception as e:
-        logger.error(f"Erro ao baixar áudio: {str(e)}")
+        logger.error(f"❌ Error downloading audio: {str(e)}")
         return None
 
 def transcribe_audio(audio_data):
     """Transcreve áudio usando Whisper da Groq"""
     try:
         if not groq_client:
-            logger.error("Cliente Groq não inicializado")
+            logger.error("❌ Groq client not initialized")
             return None
             
-        # Salva temporariamente o arquivo de áudio
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as temp_audio:
             temp_audio.write(audio_data)
             temp_audio_path = temp_audio.name
         
-        logger.info(f"Transcrevendo áudio temporário: {temp_audio_path}")
+        logger.info(f"🎤 Transcribing audio: {temp_audio_path}")
         
-        # Transcreve com Whisper
         with open(temp_audio_path, "rb") as audio_file:
             transcription = groq_client.audio.transcriptions.create(
                 model="whisper-large-v3",
@@ -192,16 +185,14 @@ def transcribe_audio(audio_data):
                 language="pt"
             )
         
-        # Remove arquivo temporário
         os.unlink(temp_audio_path)
         
         transcription_text = transcription.text.strip()
-        logger.info(f"Transcrição realizada: {transcription_text}")
+        logger.info(f"✅ Transcription: {transcription_text}")
         return transcription_text
         
     except Exception as e:
-        logger.error(f"Erro na transcrição: {str(e)}")
-        # Remove arquivo temporário em caso de erro
+        logger.error(f"❌ Transcription error: {str(e)}")
         try:
             if 'temp_audio_path' in locals():
                 os.unlink(temp_audio_path)
@@ -218,7 +209,6 @@ def get_lina_response(user_message, phone_number):
         # Verifica se é primeira mensagem do usuário
         is_first_message = phone_number not in conversation_context
         
-        # Inicializa ou recupera contexto
         if is_first_message:
             conversation_context[phone_number] = {
                 "messages": [],
@@ -232,14 +222,14 @@ def get_lina_response(user_message, phone_number):
             {"role": "system", "content": LINA_PROMPT}
         ]
         
-        # Adiciona histórico recente (últimas 10 interações)
+        # Adiciona histórico recente
         for msg in context["messages"][-10:]:
             messages.append(msg)
         
         # Adiciona mensagem atual
         messages.append({"role": "user", "content": user_message})
         
-        logger.info(f"Gerando resposta com Groq para: {user_message[:50]}...")
+        logger.info(f"🧠 Generating response with Groq for: {user_message[:50]}...")
         
         # Gera resposta com Groq
         response = groq_client.chat.completions.create(
@@ -259,72 +249,76 @@ def get_lina_response(user_message, phone_number):
         if len(context["messages"]) > 20:
             context["messages"] = context["messages"][-20:]
         
-        logger.info(f"Resposta gerada: {lina_response[:100]}...")
+        logger.info(f"✅ Response generated: {lina_response[:100]}...")
         return lina_response
         
     except Exception as e:
-        logger.error(f"Erro ao gerar resposta: {str(e)}")
+        logger.error(f"❌ Error generating response: {str(e)}")
         return "Ops! 😅 Tive um pequeno problema técnico. Pode repetir sua mensagem?"
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Endpoint principal do webhook Z-API"""
     try:
-        # Log do payload recebido
         data = request.get_json()
-        logger.info(f"Webhook recebido: {json.dumps(data, indent=2)}")
+        logger.info(f"📥 Webhook received: {json.dumps(data, indent=2)}")
         
-        # Verifica se é mensagem recebida
         if not data:
-            logger.warning("Payload vazio recebido")
+            logger.warning("⚠️ Empty payload received")
             return jsonify({"status": "ignored"}), 200
-            
-        # Diferentes tipos de callback do Z-API
-        message_type_field = data.get('type') or data.get('event')
-        if message_type_field not in ['ReceivedCallback', 'received'] and message_type_field is not None:
-            logger.info(f"Tipo de callback ignorado: {message_type_field}")
+        
+        # Verifica se é callback de mensagem recebida - MODO FLEXÍVEL
+        message_type_field = data.get('type')
+        logger.info(f"🔍 Message type field: {message_type_field}")
+        
+        # Aceita qualquer tipo de callback ou None
+        if message_type_field and message_type_field not in ['ReceivedCallback', 'received']:
+            logger.info(f"⏭️ Callback type ignored: {message_type_field}")
             return jsonify({"status": "ignored"}), 200
         
         # Extrai informações da mensagem
         phone = data.get('phone') or data.get('from')
-        message_type = data.get('messageType') or data.get('type')
-        
         if not phone:
-            logger.warning("Mensagem sem número de telefone")
+            logger.warning("⚠️ No phone number found")
             return jsonify({"status": "error", "message": "No phone number"}), 400
         
-        # Remove caracteres especiais do número
+        # Limpa número de telefone
         phone = phone.replace('+', '').replace('-', '').replace(' ', '')
-        logger.info(f"Processando mensagem de {phone} - Tipo: {message_type}")
+        logger.info(f"📱 Processing message from: {phone}")
         
         user_message = None
         
-        # Processa mensagem de texto
-        if message_type == 'text':
-            text_data = data.get('text', {})
+        # PROCESSA TEXTO - Modo super flexível
+        text_data = data.get('text', {})
+        if text_data and isinstance(text_data, dict):
             user_message = text_data.get('message', '')
-            logger.info(f"Mensagem de texto de {phone}: {user_message}")
+            logger.info(f"💬 Text message found: {user_message}")
         
-        # Processa mensagem de áudio
-        elif message_type in ['audio', 'ptt']:
-            logger.info(f"Áudio recebido de {phone}")
+        # Se ainda não achou a mensagem, procura em outros lugares
+        if not user_message:
+            # Verifica se a mensagem está diretamente no data
+            user_message = data.get('message', '')
+            if user_message:
+                logger.info(f"💬 Direct message found: {user_message}")
+        
+        # PROCESSA ÁUDIO
+        message_type = data.get('messageType', 'text')
+        if message_type in ['audio', 'ptt'] and not user_message:
+            logger.info(f"🎤 Audio message detected")
             
-            # Obtém ID do áudio
             audio_info = data.get('audio', {}) or data.get('ptt', {})
             message_id = audio_info.get('messageId') or data.get('messageId')
             
             if message_id:
-                logger.info(f"Processando áudio com ID: {message_id}")
+                logger.info(f"🔍 Processing audio ID: {message_id}")
                 
-                # Baixa e transcreve áudio
                 audio_data = download_audio_from_z_api(message_id)
                 if audio_data:
                     transcription = transcribe_audio(audio_data)
                     if transcription and transcription.strip():
                         user_message = transcription
-                        logger.info(f"Transcrição realizada: {transcription}")
+                        logger.info(f"✅ Audio transcribed: {transcription}")
                         
-                        # Envia confirmação da transcrição
                         send_message_to_whatsapp(
                             phone, 
                             f"🎤 *Entendi seu áudio:* _{transcription}_"
@@ -341,29 +335,26 @@ def webhook():
                         "Não consegui processar o áudio. Pode tentar novamente? 🎤"
                     )
                     return jsonify({"status": "download_failed"}), 200
-            else:
-                logger.error("ID do áudio não encontrado")
-                return jsonify({"status": "error", "message": "Audio ID not found"}), 400
         
-        # Se não há mensagem para processar, ignora
+        # Verifica se há mensagem para processar
         if not user_message or not user_message.strip():
-            logger.info("Mensagem vazia ou inválida, ignorando")
-            return jsonify({"status": "ignored"}), 200
+            logger.warning(f"⚠️ Empty or invalid message. Raw data: {data}")
+            return jsonify({"status": "ignored", "reason": "empty_message"}), 200
         
         # Gera resposta da Lina
-        logger.info(f"Gerando resposta da Lina para: {user_message}")
+        logger.info(f"🤖 Generating Lina response for: {user_message}")
         lina_response = get_lina_response(user_message, phone)
         
         # Envia resposta
         if send_message_to_whatsapp(phone, lina_response):
-            logger.info(f"Conversa processada com sucesso para {phone}")
+            logger.info(f"✅ Conversation completed successfully for {phone}")
             return jsonify({"status": "success"}), 200
         else:
-            logger.error(f"Falha ao enviar resposta para {phone}")
+            logger.error(f"❌ Failed to send response to {phone}")
             return jsonify({"status": "send_failed"}), 500
         
     except Exception as e:
-        logger.error(f"Erro no webhook: {str(e)}", exc_info=True)
+        logger.error(f"💥 Webhook error: {str(e)}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/health', methods=['GET'])
@@ -378,7 +369,7 @@ def health_check():
             "groq_configured": bool(GROQ_API_KEY),
             "groq_client_ready": groq_client is not None
         },
-        "conversation_active": len(conversation_context)
+        "active_conversations": len(conversation_context)
     }), 200
 
 @app.route('/', methods=['GET'])
@@ -386,7 +377,7 @@ def home():
     """Página inicial"""
     return jsonify({
         "agent": "Lina - Assistente IA para WhatsApp",
-        "version": "1.0",
+        "version": "1.1",
         "status": "online" if groq_client else "partially_online",
         "endpoints": {
             "webhook": "/webhook",
@@ -396,11 +387,11 @@ def home():
             "Conversas por texto",
             "Transcrição de áudios",
             "Múltiplas áreas de conhecimento",
-            "Contexto de conversa"
+            "Contexto de conversa",
+            "Processamento flexível de webhooks"
         ]
     }), 200
 
-# Endpoint de teste (remover em produção)
 @app.route('/test', methods=['POST'])
 def test_endpoint():
     """Endpoint para testar funcionalidades"""
@@ -428,17 +419,10 @@ def test_endpoint():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    # Verifica configurações essenciais
-    if not all([Z_API_TOKEN, Z_API_INSTANCE, GROQ_API_KEY]):
-        logger.error("ERRO CRÍTICO: Variáveis de ambiente não configuradas!")
-        logger.error("Verifique Z_API_TOKEN, Z_API_INSTANCE e GROQ_API_KEY")
-        # Não interrompe em produção, só alerta
-        
-    logger.info("🤖 Lina WhatsApp Agent iniciando...")
+    logger.info("🤖 Lina WhatsApp Agent starting...")
     logger.info(f"📱 Z-API Instance: {Z_API_INSTANCE}")
-    logger.info(f"🧠 Groq Client: {'✓ Configurado' if groq_client else '✗ Erro'}")
+    logger.info(f"🧠 Groq Client: {'✅ Ready' if groq_client else '❌ Error'}")
     
-    # Inicia servidor
     port = int(os.getenv('PORT', 5000))
-    logger.info(f"🚀 Servidor iniciando na porta {port}")
+    logger.info(f"🚀 Server starting on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
