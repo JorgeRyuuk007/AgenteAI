@@ -280,7 +280,7 @@ def webhook():
             
         # Diferentes tipos de callback do Z-API
         message_type_field = data.get('type') or data.get('event')
-        if message_type_field not in ['ReceivedCallback', 'received']:
+       if message_type_field not in ['ReceivedCallback', 'received'] and message_type_field != None:
             logger.info(f"Tipo de callback ignorado: {message_type_field}")
             return jsonify({"status": "ignored"}), 200
         
