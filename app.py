@@ -98,7 +98,8 @@ CASOS ESPECIAIS:
 def send_message_to_whatsapp(phone, message):
     """Envia mensagem de texto via Z-API"""
     try:
-        url = f"{Z_API_BASE_URL}/instances/{Z_API_INSTANCE}/token/{Z_API_TOKEN}/send-text"
+        # URL direta para garantir que está correta
+        url = f"https://api.z-api.io/instances/{Z_API_INSTANCE}/token/{Z_API_TOKEN}/send-text"
         
         payload = {
             "phone": phone,
@@ -106,12 +107,18 @@ def send_message_to_whatsapp(phone, message):
         }
         
         headers = {
-            "Content-Type": "application/json",
-            "Client-Token": Z_API_TOKEN
+            "Content-Type": "application/json"
         }
         
-        logger.info(f"📤 Enviando mensagem para {phone}: {message[:50]}...")
+        logger.info(f"📤 Enviando para {phone}: {message[:50]}...")
+        logger.info(f"🔗 URL: {url}")
+        logger.info(f"📦 Payload: {payload}")
+        
         response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        logger.info(f"📊 Status Code: {response.status_code}")
+        logger.info(f"📝 Response: {response.text}")
+        
         response.raise_for_status()
         
         result = response.json()
