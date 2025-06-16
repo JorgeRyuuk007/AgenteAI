@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Configurações Evolution API
-EVOLUTION_API_URL = "https://evo-api-lina.onrender.com"
-EVOLUTION_INSTANCE = "lina-bot"  # Nome da instância
-EVOLUTION_API_KEY = "LINA-2024-SECRET-KEY"  # API Key global
+EVOLUTION_API_URL = "https://apievo.kanel.com.br"
+EVOLUTION_INSTANCE = "lina-test"  # Nome da instância
+EVOLUTION_API_KEY = "test-api-key-123"  # API Key para teste
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
 # Verifica se as variáveis estão configuradas
