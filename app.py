@@ -51,7 +51,7 @@ LINA_PROMPT = """NOME: Lina
 
 INTRODUÇÃO INICIAL:
 Se for a primeira mensagem do usuário, responda exatamente:
-"Hey! Lina na área 🚀 Considere seus problemas resolvidos (ou pelo menos, vamos tentar juntos!). O que tá rolando hoje?"
+"Oi! Eu sou a Lina 😊 Posso te ajudar com qualquer assunto - desde receitas e tecnologia até estudos e relacionamentos. O que você precisa hoje?"
 
 IDENTIDADE:
 - Assistente versátil e inteligente
@@ -290,6 +290,13 @@ def webhook():
         if not phone:
             logger.warning("⚠️ No phone number found")
             return jsonify({"status": "error", "message": "No phone number"}), 400
+        
+        # Corrige formato do número brasileiro (adiciona 9 se necessário)
+        original_phone = phone
+        if phone and phone.startswith('5571') and len(phone) == 12:
+            # Se for Bahia (71) e tem 12 dígitos, adiciona o 9
+            phone = phone[:4] + '9' + phone[4:]
+            logger.info(f"📱 Número corrigido de {original_phone} para {phone}")
         
         # Limpa número de telefone
         phone = phone.replace('+', '').replace('-', '').replace(' ', '')
