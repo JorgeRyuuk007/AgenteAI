@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 # Inicializa Flask
 app = Flask(__name__)
 
-# Configurações Evolution API
-EVOLUTION_API_URL = "https://evolution.prd.zohotek.com.br"
+# Configurações Evolution API - ATUALIZADAS PARA SUA VPS
+EVOLUTION_API_URL = "http://109.199.107.221:8080"  # IP da sua VPS com porta
 EVOLUTION_INSTANCE = "linabot2024"  # Nome da instância
 EVOLUTION_API_KEY = "LINA-BOT-SECRET-2024"  # API Key para teste
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', 'AIzaSyALfY8C12OEB4xuQqXaOuPo0Azfao7QyAI')
@@ -97,6 +97,32 @@ CASOS ESPECIAIS:
 - Criatividade: Inspire com múltiplas perspectivas e ideias
 - Problemas pessoais: Ouça com empatia, sugira sem impor"""
 
+def test_evolution_api_connection():
+    """Testa conexão com Evolution API"""
+    try:
+        url = f"{EVOLUTION_API_URL}/instance/connectionStatus/{EVOLUTION_INSTANCE}"
+        headers = {
+            "apikey": EVOLUTION_API_KEY
+        }
+        
+        logger.info(f"🔄 Testando conexão com Evolution API: {url}")
+        response = requests.get(url, headers=headers, timeout=10)
+        
+        logger.info(f"📊 Status Code: {response.status_code}")
+        logger.info(f"📝 Response: {response.text}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            logger.info(f"✅ Evolution API conectada: {result}")
+            return True
+        else:
+            logger.error(f"❌ Erro na conexão com Evolution API: {response.status_code}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Erro ao testar conexão Evolution API: {str(e)}")
+        return False
+
 def send_message_to_whatsapp(phone, message):
     """Envia mensagem de texto via Evolution API"""
     try:
@@ -120,7 +146,7 @@ def send_message_to_whatsapp(phone, message):
         logger.info(f"📊 Status Code: {response.status_code}")
         logger.info(f"📝 Response: {response.text}")
         
-        if response.status_code == 201:
+        if response.status_code in [200, 201]:
             result = response.json()
             logger.info(f"✅ Evolution API Response: {result}")
             return True
@@ -354,14 +380,17 @@ def webhook():
 @app.route('/health', methods=['GET'])
 def health_check():
     """Endpoint de health check"""
+    evolution_status = test_evolution_api_connection()
+    
     return jsonify({
-        "status": "healthy",
+        "status": "healthy" if (gemini_client and evolution_status) else "partially_healthy",
         "service": "Lina WhatsApp Agent",
         "timestamp": datetime.now().isoformat(),
         "api": "Evolution API",
         "environment": {
             "evolution_api_url": EVOLUTION_API_URL,
             "evolution_instance": EVOLUTION_INSTANCE,
+            "evolution_connected": evolution_status,
             "gemini_configured": bool(GEMINI_API_KEY),
             "gemini_client_ready": gemini_client
         },
@@ -373,19 +402,22 @@ def home():
     """Página inicial"""
     return jsonify({
         "agent": "Lina - Assistente IA para WhatsApp",
-        "version": "2.0 - Evolution API",
+        "version": "2.0 - Evolution API VPS",
         "status": "online" if gemini_client else "partially_online",
         "api": "Evolution API",
+        "vps": "109.199.107.221",
         "endpoints": {
             "webhook": "/webhook",
-            "health": "/health"
+            "health": "/health",
+            "test": "/test"
         },
         "features": [
             "Conversas por texto",
             "Transcrição de áudios",
             "Múltiplas áreas de conhecimento",
             "Contexto de conversa",
-            "Evolution API Integration"
+            "Evolution API Integration",
+            "VPS Hosting"
         ]
     }), 200
 
@@ -410,7 +442,39 @@ def test_endpoint():
         elif test_type == 'health':
             return health_check()
             
+        elif test_type == 'evolution':
+            connection_status = test_evolution_api_connection()
+            return jsonify({
+                "status": "success" if connection_status else "error",
+                "evolution_api_connected": connection_status,
+                "api_url": EVOLUTION_API_URL,
+                "instance": EVOLUTION_INSTANCE
+            })
+            
         return jsonify({"status": "unknown_test_type"}), 400
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/test-send', methods=['POST'])
+def test_send_message():
+    """Endpoint para testar envio de mensagem diretamente"""
+    try:
+        data = request.get_json()
+        phone = data.get('phone')
+        message = data.get('message', 'Teste da Lina!')
+        
+        if not phone:
+            return jsonify({"status": "error", "message": "Phone number required"}), 400
+            
+        success = send_message_to_whatsapp(phone, message)
+        
+        return jsonify({
+            "status": "success" if success else "error",
+            "message_sent": success,
+            "phone": phone,
+            "message": message
+        })
         
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -420,6 +484,13 @@ if __name__ == '__main__':
     logger.info(f"🔗 Evolution API: {EVOLUTION_API_URL}")
     logger.info(f"📱 Instance: {EVOLUTION_INSTANCE}")
     logger.info(f"🧠 Gemini Client: {'✅ Ready' if gemini_client else '❌ Error'}")
+    
+    # Testa conexão com Evolution API na inicialização
+    logger.info("🔄 Testing Evolution API connection...")
+    if test_evolution_api_connection():
+        logger.info("✅ Evolution API connection successful!")
+    else:
+        logger.warning("⚠️ Evolution API connection failed - check VPS status")
     
     port = int(os.getenv('PORT', 5000))
     logger.info(f"🚀 Server starting on port {port}")
